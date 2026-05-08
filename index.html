@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>カニの仕分けサバイバル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 砂浜のテクスチャと波のレイアウト */
+        body { margin: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+        
+        .beach-bg {
+            background-color: #dcbfa6;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 100%),
+                url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+        }
+
+        .wave-container {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 35vh;
+            overflow: hidden; pointer-events: none; z-index: 10;
+        }
+
+        .wave {
+            position: absolute;
+            bottom: -50px; left: -10%; width: 120%; height: 100%;
+            border-radius: 50% 50% 0 0;
+            opacity: 0.5;
+            filter: blur(3px);
+            animation: wave-anim 5s infinite alternate ease-in-out;
+        }
+        .wave-1 {
+            background: radial-gradient(ellipse at top, rgba(255, 255, 255, 0.8) 0%, rgba(135, 206, 235, 0.4) 40%, rgba(65, 105, 225, 0.5) 100%);
+        }
+        .wave-2 {
+            bottom: -80px;
+            animation-delay: -2s; animation-duration: 7s;
+            background: radial-gradient(ellipse at top, rgba(255, 255, 255, 0.9) 0%, rgba(173, 216, 230, 0.5) 50%, rgba(30, 144, 255, 0.6) 100%);
+        }
+        .wave-3 {
+            bottom: -110px;
+            animation-delay: -4s; animation-duration: 6s;
+            background: radial-gradient(ellipse at top, rgba(255, 255, 255, 1) 0%, rgba(70, 130, 180, 0.6) 60%, rgba(0, 0, 139, 0.7) 100%);
+        }
+
+        @keyframes wave-anim {
+            0% { transform: translateY(20px) scaleY(0.9) scaleX(1); }
+            100% { transform: translateY(-30px) scaleY(1.1) scaleX(1.02); }
+        }
+
+        /* カニの基本スタイルと歩行アニメーション */
+        .crab-wrapper {
+            position: absolute;
+            will-change: transform;
+            cursor: pointer;
+            z-index: 20;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .crab-svg { filter: drop-shadow(2px 4px 3px rgba(0,0,0,0.4)); }
+
+        @keyframes walkL {
+            0% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-4px) rotate(8deg); }
+            100% { transform: translateY(0) rotate(0deg); }
+        }
+        @keyframes walkR {
+            0% { transform: translateY(-4px) rotate(-8deg); }
+            50% { transform: translateY(0) rotate(0deg); }
+            100% { transform: translateY(-4px) rotate(-8deg); }
+        }
+        @keyframes bodyRoll {
+            0% { transform: rotate(-3deg); }
+            100% { transform: rotate(3deg); }
+        }
+
+        /* 捕獲エフェクト */
+        .score-popup {
+            position: absolute;
+            color: #fbbf24; /* yellow-400 */
+            font-weight: 900;
+            font-size: 2rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8), 0 0 10px rgba(255,255,255,0.5);
+            pointer-events: none;
+            z-index: 50;
+            animation: popupAnim 0.6s ease-out forwards;
+        }
+        @keyframes popupAnim {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            50% { transform: translate(-50%, -100%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -150%) scale(1); opacity: 0; }
+        }
+
+        /* 画面フラッシュ */
+        .flash-red {
+            animation: flashAnim 0.3s ease-out;
+        }
+        @keyframes flashAnim {
+            0% { background-color: rgba(220, 38, 38, 0.8); }
+            100% { background-color: transparent; }
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative bg-black">
+
+    <!-- 背景・ゲームボード -->
+    <div id="game-board" class="absolute inset-0 beach-bg">
+        <!-- 飾り: ヒトデ -->
+        <svg class="absolute top-[15%] left-[20%] w-12 h-12 opacity-30" viewBox="0 0 100 100" fill="#c47a52">
+            <polygon points="50,5 61,35 95,35 68,55 78,85 50,65 22,85 32,55 5,35 39,35" stroke="#8b4513" stroke-width="2"/>
+        </svg>
+        <svg class="absolute top-[60%] right-[15%] w-8 h-8 opacity-40 rotate-45" viewBox="0 0 100 100" fill="#d8b8a5">
+             <path d="M50,10 C70,10 90,30 90,50 C90,80 50,90 50,90 C50,90 10,80 10,50 C10,30 30,10 50,10 Z" stroke="#8b4513" stroke-width="1"/>
+        </svg>
+    </div>
+
+    <!-- 波の演出（手前） -->
+    <div class="wave-container">
+        <div class="wave wave-3"></div>
+        <div class="wave wave-2"></div>
+        <div class="wave wave-1"></div>
+    </div>
+
+    <!-- UI レイヤー -->
+    <div class="absolute top-0 left-0 w-full p-4 flex justify-between items-start pointer-events-none z-40">
+        <div class="bg-white/80 px-4 py-2 rounded-xl shadow-lg border-2 border-gray-300 pointer-events-auto">
+            <span class="text-gray-700 font-bold text-xl">SCORE: </span>
+            <span id="score-display" class="text-orange-600 font-black text-3xl">0</span>
+        </div>
+    </div>
+
+    <div id="flash-overlay" class="absolute inset-0 pointer-events-none z-50"></div>
+
+    <!-- スタート画面 -->
+    <div id="start-screen" class="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-[60] backdrop-blur-sm p-4">
+        <h1 class="text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-orange-300 to-red-600 mb-6 drop-shadow-[0_2px_2px_rgba(255,255,255,0.8)] text-center tracking-tight">
+            カニの仕分け<br>サバイバル
+        </h1>
+        <div class="bg-white/10 p-6 rounded-2xl border border-white/20 mb-8 max-w-lg shadow-2xl">
+            <p class="text-white text-lg md:text-xl font-medium leading-relaxed text-center mb-4">
+                迫りくる<span class="text-orange-300 font-bold">普通のカニ（赤茶色・尖った形）</span>をタップして捕まえろ！<br>
+            </p>
+            <div class="bg-red-900/50 p-4 rounded-xl border border-red-500/50 text-center">
+                <p class="text-red-200 font-bold text-lg">⚠️ 警告 ⚠️</p>
+                <p class="text-white font-bold">
+                    <span class="text-red-400">スベスベマンジュウガニ<br>（丸くて斑点があるカニ）</span><br>には猛毒がある！<br>絶対に触るな！
+                </p>
+            </div>
+        </div>
+        <button id="start-btn" class="px-10 py-5 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white rounded-full font-black text-2xl md:text-3xl shadow-[0_0_20px_rgba(234,88,12,0.6)] transform hover:scale-105 transition-all border-4 border-orange-200">
+            ゲームスタート
+        </button>
+    </div>
+
+    <!-- ゲームオーバー画面 -->
+    <div id="gameover-screen" class="absolute inset-0 bg-red-950/90 flex flex-col items-center justify-center z-[60] hidden backdrop-blur-md p-4">
+        <h1 class="text-5xl md:text-7xl font-black text-red-500 mb-2 drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]">GAME OVER</h1>
+        <p class="text-red-200 text-xl md:text-2xl mb-8 font-bold tracking-widest">猛毒にやられた...</p>
+        
+        <div class="bg-black/40 p-6 md:p-8 rounded-3xl mb-8 border border-red-800/50 text-center w-full max-w-sm">
+            <p class="text-gray-300 text-lg mb-2">最終スコア</p>
+            <p id="final-score" class="text-6xl font-black text-yellow-400 drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">0</p>
+        </div>
+        
+        <button id="retry-btn" class="px-10 py-5 bg-white text-red-900 hover:bg-gray-200 rounded-full font-black text-2xl md:text-3xl shadow-[0_0_20px_rgba(255,255,255,0.4)] transform hover:scale-105 transition-all">
+            もう一度挑む
+        </button>
+    </div>
+
+    <script>
+        // --- SVG Data ---
+        const NORMAL_CRAB_SVG = `
+            <svg viewBox="0 0 120 120" class="w-full h-full crab-svg">
+                <g class="legs">
+                    <g stroke="#612d11" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round" class="leg-l">
+                        <polyline points="40,55 15,40 5,65" />
+                        <polyline points="40,65 10,55 0,80" />
+                        <polyline points="45,75 15,75 10,100" />
+                        <polyline points="50,85 25,90 20,110" />
+                    </g>
+                    <g stroke="#612d11" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round" class="leg-r">
+                        <polyline points="80,55 105,40 115,65" />
+                        <polyline points="80,65 110,55 120,80" />
+                        <polyline points="75,75 105,75 110,100" />
+                        <polyline points="70,85 95,90 100,110" />
+                    </g>
+                </g>
+                <path d="M45,45 Q20,10 15,25 Q10,40 35,50 Z" fill="#8c3f15" stroke="#4a1f0a" stroke-width="2"/>
+                <path d="M15,25 Q10,15 25,15 Q30,25 25,30 Z" fill="#8c3f15" stroke="#4a1f0a" stroke-width="1"/>
+                <path d="M75,45 Q100,10 105,25 Q110,40 85,50 Z" fill="#8c3f15" stroke="#4a1f0a" stroke-width="2"/>
+                <path d="M105,25 Q110,15 95,15 Q90,25 95,30 Z" fill="#8c3f15" stroke="#4a1f0a" stroke-width="1"/>
+                <!-- ゴツゴツした甲羅 -->
+                <path d="M40,35 L80,35 L95,55 L80,85 L40,85 L25,55 Z" fill="#a04b1c" stroke="#4a1f0a" stroke-width="2"/>
+                <path d="M50,45 Q60,50 70,45" stroke="#783410" stroke-width="2" fill="none"/>
+                <circle cx="48" cy="30" r="3" fill="#111"/>
+                <circle cx="72" cy="30" r="3" fill="#111"/>
+            </svg>
+        `;
+
+        const POISON_CRAB_SVG = `
+            <svg viewBox="0 0 120 120" class="w-full h-full crab-svg">
+                <g class="legs">
+                    <g stroke="#a67c52" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" class="leg-l">
+                        <polyline points="40,60 20,50 15,70" />
+                        <polyline points="42,70 18,65 12,85" />
+                        <polyline points="45,80 22,80 18,100" />
+                        <polyline points="50,90 30,95 28,110" />
+                    </g>
+                    <g stroke="#a67c52" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" class="leg-r">
+                        <polyline points="80,60 100,50 105,70" />
+                        <polyline points="78,70 102,65 108,85" />
+                        <polyline points="75,80 98,80 102,100" />
+                        <polyline points="70,90 90,95 92,110" />
+                    </g>
+                </g>
+                <!-- 丸っこいハサミ -->
+                <path d="M45,55 C25,35 15,50 25,65 Z" fill="#d9ad7c" stroke="#8b4513" stroke-width="2"/>
+                <path d="M25,45 C15,40 15,55 25,55 Z" fill="#4a1010" stroke="#220000" stroke-width="1"/>
+                <path d="M75,55 C95,35 105,50 95,65 Z" fill="#d9ad7c" stroke="#8b4513" stroke-width="2"/>
+                <path d="M95,45 C105,40 105,55 95,55 Z" fill="#4a1010" stroke="#220000" stroke-width="1"/>
+                <!-- 丸い甲羅 (スベスベマンジュウガニ) -->
+                <path d="M30,65 C20,30 100,30 90,65 C85,95 35,95 30,65 Z" fill="#e6c29a" stroke="#8b4513" stroke-width="2"/>
+                <!-- 毒々しい斑点模様 -->
+                <path d="M50,45 C45,40 55,35 60,40 C65,45 55,50 50,45 Z" fill="#7a2016" opacity="0.85"/>
+                <circle cx="35" cy="55" r="6" fill="#7a2016" opacity="0.85"/>
+                <circle cx="85" cy="55" r="6" fill="#7a2016" opacity="0.85"/>
+                <path d="M45,65 C40,75 50,80 55,70 C60,60 50,55 45,65 Z" fill="#7a2016" opacity="0.85"/>
+                <path d="M75,65 C80,75 70,80 65,70 C60,60 70,55 75,65 Z" fill="#7a2016" opacity="0.85"/>
+                <circle cx="60" cy="55" r="4" fill="#7a2016" opacity="0.85"/>
+                <circle cx="60" cy="80" r="4" fill="#7a2016" opacity="0.85"/>
+                <circle cx="40" cy="78" r="3" fill="#7a2016" opacity="0.85"/>
+                <circle cx="80" cy="78" r="3" fill="#7a2016" opacity="0.85"/>
+                <circle cx="50" cy="38" r="2" fill="#111"/>
+                <circle cx="70" cy="38" r="2" fill="#111"/>
+            </svg>
+        `;
+
+        // --- Game Logic ---
+        const gameBoard = document.getElementById('game-board');
+        const scoreDisplay = document.getElementById('score-display');
+        const startScreen = document.getElementById('start-screen');
+        const gameoverScreen = document.getElementById('gameover-screen');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const flashOverlay = document.getElementById('flash-overlay');
+
+        let isPlaying = false;
+        let score = 0;
+        let crabs = [];
+        let crabIdCounter = 0;
+        
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let spawnInterval = 1200; // ms
+        let speedMultiplier = 1;
+        let animationFrameId;
+
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('retry-btn').addEventListener('click', startGame);
+
+        function startGame() {
+            isPlaying = true;
+            score = 0;
+            speedMultiplier = 1;
+            spawnInterval = 1200;
+            scoreDisplay.textContent = score;
+            
+            // クリーンアップ
+            crabs.forEach(c => c.el.remove());
+            crabs = [];
+            
+            startScreen.classList.add('hidden');
+            gameoverScreen.classList.add('hidden');
+            
+            lastTime = performance.now();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            cancelAnimationFrame(animationFrameId);
+            
+            // フラッシュエフェクト
+            flashOverlay.classList.add('flash-red');
+            setTimeout(() => {
+                flashOverlay.classList.remove('flash-red');
+                finalScoreDisplay.textContent = score;
+                gameoverScreen.classList.remove('hidden');
+            }, 300);
+        }
+
+        function getSpawnAndTargetPoints() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const pad = 150; // 画面外のマージン
+            const side = Math.floor(Math.random() * 4); // 0:Top, 1:Right, 2:Bottom, 3:Left
+            
+            let startX, startY;
+            if (side === 0) { startX = Math.random() * w; startY = -pad; }
+            else if (side === 1) { startX = w + pad; startY = Math.random() * h; }
+            else if (side === 2) { startX = Math.random() * w; startY = h + pad; }
+            else { startX = -pad; startY = Math.random() * h; }
+
+            // ターゲットは画面中心のエリア
+            const targetX = w * 0.2 + Math.random() * (w * 0.6);
+            const targetY = h * 0.2 + Math.random() * (h * 0.6);
+
+            return { startX, startY, targetX, targetY };
+        }
+
+        function spawnCrab() {
+            const isPoison = Math.random() < 0.25; // 25%の確率で毒カニ
+            const size = 60 + Math.random() * 50; // 60px - 110px
+            const { startX, startY, targetX, targetY } = getSpawnAndTargetPoints();
+            
+            const dx = targetX - startX;
+            const dy = targetY - startY;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            
+            // 基本速度 + ランダム + 進行度による倍率
+            const speed = (80 + Math.random() * 60) * speedMultiplier; 
+            const vx = (dx / distance) * speed;
+            const vy = (dy / distance) * speed;
+            
+            // 進行方向の角度
+            const moveAngle = Math.atan2(vy, vx) * 180 / Math.PI;
+            // カニは横歩きさせる (進行方向に対して±90度向く)
+            const walkOffset = Math.random() > 0.5 ? 90 : -90;
+            const visualRotation = moveAngle + walkOffset + 90; // SVGの上が0度になるよう調整
+
+            const id = `crab-${crabIdCounter++}`;
+            const el = document.createElement('div');
+            el.className = 'crab-wrapper flex items-center justify-center';
+            el.style.width = `${size}px`;
+            el.style.height = `${size}px`;
+            
+            // 足と体の個別アニメーション速度
+            const animSpeed = (0.2 + Math.random() * 0.15) / Math.max(0.5, speedMultiplier * 0.8);
+
+            el.innerHTML = `
+                <style>
+                    .${id} .leg-l { animation: walkL ${animSpeed}s infinite linear; transform-origin: top center; }
+                    .${id} .leg-r { animation: walkR ${animSpeed}s infinite linear; transform-origin: top center; }
+                    .${id} .body-anim { animation: bodyRoll ${animSpeed * 1.5}s infinite alternate linear; }
+                </style>
+                <div class="body-anim ${id} w-full h-full" style="transform: rotate(${visualRotation}deg)">
+                    ${isPoison ? POISON_CRAB_SVG : NORMAL_CRAB_SVG}
+                </div>
+            `;
+
+            gameBoard.appendChild(el);
+
+            const crabObj = { id, el, x: startX, y: startY, vx, vy, size, isPoison };
+            crabs.push(crabObj);
+
+            // タップ/クリックイベント
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); // タッチ時のスクロール等防止
+                e.stopPropagation();
+                if (!isPlaying) return;
+
+                if (isPoison) {
+                    gameOver();
+                } else {
+                    catchCrab(crabObj, e.clientX, e.clientY);
+                }
+            });
+        }
+
+        function catchCrab(crabObj, x, y) {
+            // スコア処理
+            score += 10;
+            scoreDisplay.textContent = score;
+            
+            // 難易度上昇
+            if (score % 50 === 0) {
+                speedMultiplier += 0.15;
+                spawnInterval = Math.max(400, spawnInterval - 100);
+            }
+
+            // エフェクト表示
+            const popup = document.createElement('div');
+            popup.className = 'score-popup';
+            popup.style.left = `${x}px`;
+            popup.style.top = `${y}px`;
+            popup.textContent = '+10';
+            document.body.appendChild(popup);
+            setTimeout(() => popup.remove(), 600);
+
+            removeCrab(crabObj);
+        }
+
+        function removeCrab(crabObj) {
+            crabObj.el.remove();
+            crabs = crabs.filter(c => c.id !== crabObj.id);
+        }
+
+        function gameLoop(timestamp) {
+            if (!isPlaying) return;
+            
+            const deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+            
+            // カニの移動と境界チェック
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const outMargin = 200;
+
+            for (let i = crabs.length - 1; i >= 0; i--) {
+                const c = crabs[i];
+                c.x += c.vx * deltaTime;
+                c.y += c.vy * deltaTime;
+                
+                c.el.style.transform = `translate(${c.x - c.size/2}px, ${c.y - c.size/2}px)`;
+                
+                // 画面外に完全に出たら消去
+                if (c.x < -outMargin || c.x > w + outMargin || c.y < -outMargin || c.y > h + outMargin) {
+                    removeCrab(c);
+                }
+            }
+            
+            // カニのスポーン制御
+            spawnTimer += deltaTime * 1000;
+            if (spawnTimer > spawnInterval) {
+                spawnCrab();
+                spawnTimer = 0;
+            }
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+    </script>
+</body>
+</html>
